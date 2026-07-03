@@ -11,13 +11,23 @@ const app = express();
 const port = process.env.PORT || 5000;
 const mongoUri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/splitwise_mvp";
 
+function normalizeOrigin(origin) {
+  return String(origin || "").replace(/\/$/, "");
+}
+
+const allowedOrigins = (process.env.CLIENT_URL || "http://127.0.0.1:5173")
+  .split(",")
+  .map(normalizeOrigin)
+  .filter(Boolean);
+
 app.use(
   cors({
     origin(origin, callback) {
-      const allowedOrigin = process.env.CLIENT_URL || "http://127.0.0.1:5173";
+      const requestOrigin = normalizeOrigin(origin);
       const isLocalDev = !origin || /^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(origin);
+      const isVercelApp = /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(requestOrigin);
 
-      if (origin === allowedOrigin || isLocalDev) {
+      if (allowedOrigins.includes(requestOrigin) || isLocalDev || isVercelApp) {
         callback(null, true);
         return;
       }

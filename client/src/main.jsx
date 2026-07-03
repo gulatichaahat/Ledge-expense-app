@@ -94,7 +94,7 @@ function App() {
         ...options,
       });
     } catch {
-      throw new Error("Backend is not connected. Start MongoDB and the server, then refresh this page.");
+      throw new Error(`Backend is not reachable at ${API_URL}. Check the deployed backend URL, Vercel VITE_API_URL, and Render CORS settings.`);
     }
 
     const data = response.status === 204 ? null : await response.json().catch(() => null);
