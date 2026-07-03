@@ -1,0 +1,14 @@
+{
+  "name": "splitwise-fullstack",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install --cache .\\.npm-cache && npm install --prefix server --cache .\\.npm-cache && npm install --prefix client --cache .\\.npm-cache",
+    "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "server": "npm run dev --prefix server",
+    "client": "npm run dev --prefix client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
