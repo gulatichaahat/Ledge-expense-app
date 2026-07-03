@@ -2,7 +2,11 @@ import dns from "node:dns/promises";
 import nodemailer from "nodemailer";
 
 function mailEnabled() {
-  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+  return Boolean(process.env.RESEND_API_KEY || (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS));
+}
+
+function resendEnabled() {
+  return Boolean(process.env.RESEND_API_KEY);
 }
 
 async function buildTransporter(overrides = {}) {
@@ -54,8 +58,47 @@ async function sendWithClient(client, { to, subject, text }) {
   });
 }
 
+async function sendWithResend({ to, subject, text }) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: process.env.MAIL_FROM || "Ledge <onboarding@resend.dev>",
+        to: [to],
+        subject,
+        text,
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error?.message || "Resend email API request failed.");
+    }
+
+    return { sent: true, id: data.id };
+  } catch (error) {
+    const reason = error.name === "AbortError" ? "Resend email API timed out." : error.message;
+    console.error("Resend email failed:", reason);
+    return { sent: false, reason };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function sendMail({ to, subject, text }) {
   if (!to) return { sent: false, reason: "No recipient email provided." };
+
+  if (resendEnabled()) {
+    return sendWithResend({ to, subject, text });
+  }
 
   const client = await buildTransporter();
   if (!client) {
