@@ -84,6 +84,8 @@ function App() {
 
   async function request(path, options = {}) {
     let response;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 25000);
     try {
       response = await fetch(`${API_URL}${path}`, {
         headers: {
@@ -91,10 +93,16 @@ function App() {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...(options.headers || {}),
         },
+        signal: controller.signal,
         ...options,
       });
-    } catch {
+    } catch (error) {
+      if (error.name === "AbortError") {
+        throw new Error(`Request timed out while contacting ${API_URL}. Render may be waking up or SMTP email sending is stuck. Try again in a minute and check Render logs.`);
+      }
       throw new Error(`Backend is not reachable at ${API_URL}. Check the deployed backend URL, Vercel VITE_API_URL, and Render CORS settings.`);
+    } finally {
+      window.clearTimeout(timeoutId);
     }
 
     const data = response.status === 204 ? null : await response.json().catch(() => null);
