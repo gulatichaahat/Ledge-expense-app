@@ -1,17 +1,33 @@
+import dns from "node:dns/promises";
 import nodemailer from "nodemailer";
 
 function mailEnabled() {
   return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
-function transporter() {
+async function transporter() {
   if (!mailEnabled()) return null;
 
+  const smtpHost = process.env.SMTP_HOST;
+  let host = smtpHost;
+  let tls;
+
+  try {
+    const [ipv4Address] = await dns.resolve4(smtpHost);
+    if (ipv4Address) {
+      host = ipv4Address;
+      tls = { servername: smtpHost };
+    }
+  } catch (error) {
+    console.warn(`SMTP IPv4 lookup failed for ${smtpHost}: ${error.message}`);
+  }
+
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
+    host,
     port: Number(process.env.SMTP_PORT || 587),
     secure: String(process.env.SMTP_SECURE || "false") === "true",
     family: 4,
+    tls,
     connectionTimeout: 10000,
     greetingTimeout: 10000,
     socketTimeout: 15000,
@@ -25,7 +41,7 @@ function transporter() {
 export async function sendMail({ to, subject, text }) {
   if (!to) return { sent: false, reason: "No recipient email provided." };
 
-  const client = transporter();
+  const client = await transporter();
   if (!client) {
     console.log(`[email skipped] ${subject} -> ${to}\n${text}`);
     return { sent: false, reason: "SMTP is not configured." };
