@@ -5,7 +5,7 @@ function mailEnabled() {
   return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
-async function transporter() {
+async function buildTransporter(overrides = {}) {
   if (!mailEnabled()) return null;
 
   const smtpHost = process.env.SMTP_HOST;
@@ -24,8 +24,8 @@ async function transporter() {
 
   return nodemailer.createTransport({
     host,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: String(process.env.SMTP_SECURE || "false") === "true",
+    port: Number(overrides.port || process.env.SMTP_PORT || 587),
+    secure: overrides.secure ?? String(process.env.SMTP_SECURE || "false") === "true",
     family: 4,
     tls,
     connectionTimeout: 10000,
@@ -38,23 +38,45 @@ async function transporter() {
   });
 }
 
+function shouldRetryGmailSsl(error) {
+  const host = String(process.env.SMTP_HOST || "").toLowerCase();
+  const port = Number(process.env.SMTP_PORT || 587);
+  const message = String(error?.message || "").toLowerCase();
+  return host === "smtp.gmail.com" && port === 587 && (message.includes("timeout") || error?.code === "ETIMEDOUT");
+}
+
+async function sendWithClient(client, { to, subject, text }) {
+  await client.sendMail({
+    from: process.env.MAIL_FROM || process.env.SMTP_USER,
+    to,
+    subject,
+    text,
+  });
+}
+
 export async function sendMail({ to, subject, text }) {
   if (!to) return { sent: false, reason: "No recipient email provided." };
 
-  const client = await transporter();
+  const client = await buildTransporter();
   if (!client) {
     console.log(`[email skipped] ${subject} -> ${to}\n${text}`);
     return { sent: false, reason: "SMTP is not configured." };
   }
 
   try {
-    await client.sendMail({
-      from: process.env.MAIL_FROM || process.env.SMTP_USER,
-      to,
-      subject,
-      text,
-    });
+    await sendWithClient(client, { to, subject, text });
   } catch (error) {
+    if (shouldRetryGmailSsl(error)) {
+      try {
+        console.warn("Gmail SMTP 587 timed out. Retrying with port 465 over SSL.");
+        const sslClient = await buildTransporter({ port: 465, secure: true });
+        await sendWithClient(sslClient, { to, subject, text });
+        return { sent: true };
+      } catch (retryError) {
+        console.error("Email send failed after Gmail SSL retry:", retryError.message);
+        return { sent: false, reason: retryError.message };
+      }
+    }
     console.error("Email send failed:", error.message);
     return { sent: false, reason: error.message };
   }
