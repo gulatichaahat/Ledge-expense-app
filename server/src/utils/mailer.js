@@ -2,13 +2,18 @@ import dns from "node:dns/promises";
 import nodemailer from "nodemailer";
 
 function mailEnabled() {
-  return Boolean(process.env.RESEND_API_KEY || (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS));
+  return Boolean(process.env.SENDGRID_API_KEY || process.env.RESEND_API_KEY || (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS));
 }
 
 export function activeEmailProvider() {
+  if (process.env.SENDGRID_API_KEY) return "sendgrid";
   if (process.env.RESEND_API_KEY) return "resend";
   if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) return "smtp";
   return "none";
+}
+
+function sendgridEnabled() {
+  return Boolean(process.env.SENDGRID_API_KEY);
 }
 
 function resendEnabled() {
@@ -99,8 +104,64 @@ async function sendWithResend({ to, subject, text }) {
   }
 }
 
+function parseSender() {
+  const from = process.env.MAIL_FROM || process.env.SENDGRID_FROM_EMAIL || process.env.SMTP_USER || "noreply@example.com";
+  const match = from.match(/^(.*?)\s*<(.+)>$/);
+  if (match) {
+    return {
+      name: match[1].trim() || "Ledge",
+      email: match[2].trim(),
+    };
+  }
+
+  return {
+    name: "Ledge",
+    email: from.trim(),
+  };
+}
+
+async function sendWithSendGrid({ to, subject, text }) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const sender = parseSender();
+
+  try {
+    const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${process.env.SENDGRID_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        personalizations: [{ to: [{ email: to }] }],
+        from: sender,
+        subject,
+        content: [{ type: "text/plain", value: text }],
+      }),
+    });
+
+    const data = await response.text();
+    if (!response.ok) {
+      throw new Error(data || "SendGrid email API request failed.");
+    }
+
+    return { sent: true };
+  } catch (error) {
+    const reason = error.name === "AbortError" ? "SendGrid email API timed out." : error.message;
+    console.error("SendGrid email failed:", reason);
+    return { sent: false, reason };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function sendMail({ to, subject, text }) {
   if (!to) return { sent: false, reason: "No recipient email provided." };
+
+  if (sendgridEnabled()) {
+    return sendWithSendGrid({ to, subject, text });
+  }
 
   if (resendEnabled()) {
     return sendWithResend({ to, subject, text });
