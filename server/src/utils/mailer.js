@@ -5,6 +5,12 @@ function mailEnabled() {
   return Boolean(process.env.RESEND_API_KEY || (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS));
 }
 
+export function activeEmailProvider() {
+  if (process.env.RESEND_API_KEY) return "resend";
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) return "smtp";
+  return "none";
+}
+
 function resendEnabled() {
   return Boolean(process.env.RESEND_API_KEY);
 }
@@ -103,7 +109,7 @@ export async function sendMail({ to, subject, text }) {
   const client = await buildTransporter();
   if (!client) {
     console.log(`[email skipped] ${subject} -> ${to}\n${text}`);
-    return { sent: false, reason: "SMTP is not configured." };
+    return { sent: false, reason: "Email provider is not configured. Add RESEND_API_KEY on Render." };
   }
 
   try {
@@ -117,11 +123,11 @@ export async function sendMail({ to, subject, text }) {
         return { sent: true };
       } catch (retryError) {
         console.error("Email send failed after Gmail SSL retry:", retryError.message);
-        return { sent: false, reason: retryError.message };
+        return { sent: false, reason: `SMTP failed after retry: ${retryError.message}. Render is still using SMTP, not Resend. Add RESEND_API_KEY and redeploy.` };
       }
     }
     console.error("Email send failed:", error.message);
-    return { sent: false, reason: error.message };
+    return { sent: false, reason: `SMTP failed: ${error.message}. Render is still using SMTP, not Resend. Add RESEND_API_KEY and redeploy.` };
   }
 
   return { sent: true };

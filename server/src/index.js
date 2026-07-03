@@ -4,6 +4,7 @@ import express from "express";
 import mongoose from "mongoose";
 import authRoutes from "./routes/auth.js";
 import groupRoutes from "./routes/groups.js";
+import { activeEmailProvider } from "./utils/mailer.js";
 
 dotenv.config();
 
@@ -39,7 +40,7 @@ app.use(
 app.use(express.json({ limit: "6mb" }));
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, service: "splitwise-server" });
+  res.json({ ok: true, service: "splitwise-server", emailProvider: activeEmailProvider() });
 });
 
 app.use("/api/auth", authRoutes);
