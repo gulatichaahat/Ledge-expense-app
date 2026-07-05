@@ -719,6 +719,15 @@ function App() {
               <Stat label="Open transfers" value={activeGroup.simplifiedDebts.length} />
             </section>
 
+            <section className="grid analytics-charts">
+              <Panel title="Category pie chart">
+                <CategoryPieChart group={activeGroup} />
+              </Panel>
+              <Panel title="Monthly bar graph">
+                <MonthlyBarChart group={activeGroup} />
+              </Panel>
+            </section>
+
             <section className="grid">
               <Panel title="Category breakdown">
                 {categoryTotals(activeGroup).length ? (
@@ -1062,6 +1071,54 @@ function InsightGrid({ group, totalSpent, openBalance }) {
   );
 }
 
+function CategoryPieChart({ group }) {
+  const items = categoryPieSegments(group);
+  const total = items.reduce((sum, item) => sum + item.amount, 0);
+
+  if (!items.length) {
+    return <Empty title="No chart data" body="Add expenses to generate a category pie chart." />;
+  }
+
+  return (
+    <div className="chart-card">
+      <div className="pie-chart" style={{ background: pieGradient(items) }}>
+        <span>{items.length}</span>
+      </div>
+      <div className="chart-legend">
+        {items.map((item) => (
+          <div key={item.category}>
+            <i style={{ background: item.color }} />
+            <span>{item.category}</span>
+            <strong>{Math.round((item.amount / total) * 100)}%</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MonthlyBarChart({ group }) {
+  const items = monthlyTrend(group);
+
+  if (!items.length) {
+    return <Empty title="No chart data" body="Add expenses across dates to generate the monthly bar graph." />;
+  }
+
+  return (
+    <div className="bar-chart" aria-label="Monthly spending bar graph">
+      {items.map((item) => (
+        <div className="bar-item" key={item.month}>
+          <div className="bar-track">
+            <i style={{ height: `${item.percent}%` }} />
+          </div>
+          <span>{item.month}</span>
+          <strong>{money(item.amount, group.currency)}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function recentActivity(group) {
   const expenses = group.expenses.map((expense) => ({
     id: `expense-${expense._id}`,
@@ -1107,6 +1164,31 @@ function categoryTotals(group) {
   return Object.entries(totals)
     .map(([category, amount]) => ({ category, amount, percent: Math.max(8, (amount / max) * 100) }))
     .sort((a, b) => b.amount - a.amount);
+}
+
+function categoryPieSegments(group) {
+  const colors = ["#ff6a3d", "#989898", "#b9d8a6", "#ff9a62", "#7e7e7e", "#e8dfda", "#ff8364"];
+  const totals = categoryTotals(group);
+  const totalAmount = totals.reduce((sum, item) => sum + item.amount, 0);
+  let start = 0;
+
+  return totals.map((item, index) => {
+    const slice = totalAmount ? (item.amount / totalAmount) * 100 : 0;
+    const segment = {
+      ...item,
+      color: colors[index % colors.length],
+      start,
+      end: start + slice,
+    };
+    start += slice;
+    return segment;
+  });
+}
+
+function pieGradient(items) {
+  return `conic-gradient(${items
+    .map((item) => `${item.color} ${item.start}% ${item.end}%`)
+    .join(", ")})`;
 }
 
 function memberContribution(group) {
