@@ -39,6 +39,7 @@ function App() {
   const [query, setQuery] = useState("");
   const [theme, setTheme] = useState(() => localStorage.getItem(THEME_KEY) || "dark");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const activeGroup = useMemo(
     () => groups.find((group) => group._id === activeGroupId) || groups[0],
@@ -532,7 +533,12 @@ function App() {
               onAccept={acceptInvitation}
             />
             <ThemeButton theme={theme} onToggle={toggleTheme} />
-            <span className="user-chip">{user?.name || user?.email}</span>
+            <ProfileMenu
+              user={user}
+              groups={groups}
+              open={profileOpen}
+              onToggle={() => setProfileOpen((current) => !current)}
+            />
             <select value={activeGroup?._id || ""} onChange={(event) => setActiveGroupId(event.target.value)} aria-label="Active group">
               {groups.length ? (
                 groups.map((group) => (
@@ -858,6 +864,59 @@ function NotificationsMenu({ invitations, open, busy, onToggle, onAccept }) {
             <p className="notification-empty">No pending invites.</p>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function ProfileMenu({ user, groups, open, onToggle }) {
+  const displayName = user?.name || "Ledge user";
+  const email = user?.email || "No email";
+  const initials = displayName
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "U";
+  const expenseCount = groups.reduce((sum, group) => sum + group.expenses.length, 0);
+  const settlementCount = groups.reduce((sum, group) => sum + group.settlements.length, 0);
+
+  return (
+    <div className="profile-menu">
+      <button className="user-chip" type="button" onClick={onToggle} aria-label="Open profile">
+        <i>{initials}</i>
+        <span>{displayName}</span>
+      </button>
+      {open && (
+        <section className="profile-card">
+          <div className="profile-hero">
+            <div className="profile-avatar">{initials}</div>
+            <div>
+              <h3>{displayName}</h3>
+              <p>{email}</p>
+              <span>Verified account</span>
+            </div>
+          </div>
+          <div className="profile-details">
+            <div>
+              <span>Groups</span>
+              <strong>{groups.length}</strong>
+            </div>
+            <div>
+              <span>Expenses</span>
+              <strong>{expenseCount}</strong>
+            </div>
+            <div>
+              <span>Settlements</span>
+              <strong>{settlementCount}</strong>
+            </div>
+          </div>
+          <div className="profile-meta">
+            <span>Profile picture</span>
+            <p>Generated from account initials.</p>
+          </div>
+        </section>
       )}
     </div>
   );
